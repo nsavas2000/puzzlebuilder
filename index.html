@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Robotik Kodlama Akademisi | Unity Builder</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --primary: #0f172a;
+            --accent: #3b82f6;
+            --accent-light: #60a5fa;
+            --glass: rgba(255, 255, 255, 0.98);
+            --gradient-start: #3b82f6;
+            --gradient-end: #1d4ed8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --bg-color: #f8fafc;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-color);
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            color: var(--primary);
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* --- SOL MENÜ (GÜNCELLENMİŞ) --- */
+        #sidebar {
+            width: 320px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            padding: 25px 20px;
+            z-index: 100;
+            box-shadow: 5px 0 25px rgba(0, 0, 0, 0.08);
+            border-right: 1px solid #e2e8f0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #sidebar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5px;
+            height: 100%;
+            background: linear-gradient(to bottom, var(--gradient-start), var(--gradient-end));
+        }
+
+        .logo-area { 
+            text-align: center; 
+            margin-bottom: 30px; 
+            padding-bottom: 20px; 
+            border-bottom: 2px solid rgba(59, 130, 246, 0.1);
+        }
+
+        .logo-area h3 {
+            margin: 0;
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .logo-area b {
+            color: var(--accent);
+        }
+
+        .logo-area p {
+            font-size: 0.8rem; 
+            color: #64748b; 
+            margin-top: 5px;
+        }
+
+        .category-title {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #64748b;
+            margin: 20px 0 12px 10px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .category-title i {
+            font-size: 0.9rem;
+        }
+
+        .product-list { 
+            overflow-y: auto; 
+            flex: 1; 
+            padding-right: 8px;
+            margin-top: 5px;
+        }
+
+        .product-list::-webkit-scrollbar { 
+            width: 6px; 
+        }
+        
+        .product-list::-webkit-scrollbar-thumb { 
+            background: var(--accent);
+            border-radius: 10px; 
+        }
+
+        .product-list::-webkit-scrollbar-track {
+            background: rgba(59, 130, 246, 0.1);
+            border-radius: 10px;
+        }
+
+        .product-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 18px;
+            margin-bottom: 10px;
+            background: white;
+            border-radius: 12px;
+            border: 2px solid #e2e8f0;
+            color: #475569;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            cursor: pointer;
+            font-size: 0.95rem;
+            position: relative;
+            overflow: hidden;
+            font-weight: 500;
+        }
+
+        .product-item:hover {
+            border-color: var(--accent);
+            transform: translateX(5px);
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.15);
+        }
+
+        .product-item i:first-child { 
+            margin-right: 15px; 
+            width: 24px; 
+            text-align: center; 
+            font-size: 1.3rem; 
+            color: var(--accent);
+        }
+
+        .lock { 
+            margin-left: auto; 
+            font-size: 0.8rem; 
+            color: #94a3b8; 
+        }
+
+        .product-item .badge {
+            margin-left: 8px;
+            font-size: 0.7rem;
+            padding: 3px 8px;
+            border-radius: 20px;
+            background: var(--accent);
+            color: white;
+            font-weight: 600;
+        }
+
+        /* --- ANA İÇERİK ALANI --- */
+        #main-viewport {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 20px;
+        }
+
+        /* UNITY CONTAINER - ÖNE ÇIKAN */
+        #unity-container {
+            width: 850px;
+            height: 850px;
+            background: white;
+            border-radius: 25px;
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.15), 
+                        0 0 0 1px rgba(255, 255, 255, 0.8),
+                        inset 0 0 0 1px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+            border: none;
+            position: relative;
+            z-index: 50;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        #unity-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 50px 100px rgba(0, 0, 0, 0.2), 
+                        0 0 0 1px rgba(255, 255, 255, 0.9);
+        }
+
+        canvas { 
+            width: 100%; 
+            height: 100%; 
+            display: block;
+        }
+
+        /* --- ÜST BUTONLAR --- */
+        .top-nav {
+            position: absolute; 
+            top: 30px; 
+            right: 30px;
+            display: flex; 
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .nav-circle {
+            width: 55px; 
+            height: 55px; 
+            background: white; 
+            border-radius: 16px;
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+            text-decoration: none; 
+            color: var(--primary); 
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(59, 130, 246, 0.1);
+        }
+
+        .nav-circle:hover { 
+            transform: translateY(-5px); 
+            background: var(--accent); 
+            color: white; 
+            box-shadow: 0 15px 30px rgba(59, 130, 246, 0.25);
+        }
+
+        .nav-circle.shop { 
+            position: relative;
+        }
+
+        .nav-circle.shop::after {
+            content: '3';
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 20px;
+            height: 20px;
+            background: #ef4444;
+            color: white;
+            border-radius: 50%;
+            font-size: 0.7rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+
+        /* --- ASİSTAN BALONU (YUKARI AÇILAN) --- */
+        #asistan-container {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            max-width: 320px;
+            z-index: 100;
+        }
+
+        .asistan-balon {
+            background: white;
+            color: var(--primary);
+            padding: 25px;
+            border-radius: 20px;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            margin-bottom: 20px;
+            border: 1px solid rgba(59, 130, 246, 0.15);
+            position: relative;
+            transform-origin: bottom right;
+            transform: scaleY(0);
+            opacity: 0;
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), 
+                        opacity 0.3s ease;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .asistan-balon.active {
+            transform: scaleY(1);
+            opacity: 1;
+        }
+
+        .asistan-balon::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .asistan-balon::-webkit-scrollbar-thumb {
+            background: var(--accent);
+            border-radius: 10px;
+        }
+
+        .asistan-balon h4 {
+            margin-bottom: 15px;
+            color: var(--accent);
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .asistan-balon h4 i {
+            font-size: 1.2rem;
+        }
+
+        .parts-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .parts-list li {
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            background: rgba(59, 130, 246, 0.05);
+            border-radius: 10px;
+            border-left: 4px solid var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.2s ease;
+        }
+
+        .parts-list li:hover {
+            background: rgba(59, 130, 246, 0.1);
+            transform: translateX(5px);
+        }
+
+        .parts-list li i {
+            color: var(--accent);
+            font-size: 0.9rem;
+        }
+
+        .asistan-profil {
+            width: 65px;
+            height: 65px;
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid white;
+            box-shadow: 0 15px 30px rgba(59, 130, 246, 0.25);
+            color: white;
+            font-size: 1.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .asistan-profil:hover {
+            transform: scale(1.1) rotate(5deg);
+            box-shadow: 0 20px 40px rgba(59, 130, 246, 0.35);
+        }
+
+        /* --- YÜKLEME EKRANI --- */
+        #unity-loading-bar { 
+            position: absolute; 
+            inset: 0; 
+            display: flex; 
+            flex-direction: column;
+            align-items: center; 
+            justify-content: center; 
+            background: rgba(255, 255, 255, 0.95);
+            z-index: 20; 
+        }
+
+        .spinner { 
+            width: 60px; 
+            height: 60px; 
+            border: 4px solid #e2e8f0; 
+            border-top: 4px solid var(--accent); 
+            border-radius: 50%; 
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        .loading-text {
+            font-size: 1.2rem;
+            color: var(--primary);
+            font-weight: 600;
+            margin-top: 15px;
+        }
+
+        .loading-progress {
+            width: 200px;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+
+        .loading-progress-bar {
+            height: 100%;
+            background: linear-gradient(to right, var(--gradient-start), var(--gradient-end));
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        @keyframes spin { 
+            0% { transform: rotate(0deg); } 
+            100% { transform: rotate(360deg); } 
+        }
+
+        /* --- DURUM GÖSTERGELERİ --- */
+        .status-indicators {
+            position: absolute;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .status-item {
+            background: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid rgba(59, 130, 246, 0.1);
+        }
+
+        .status-online { color: var(--success); }
+        .status-building { color: var(--warning); }
+
+        .status-item i {
+            font-size: 0.9rem;
+        }
+
+        /* Responsive düzenlemeler */
+        @media (max-width: 1400px) {
+            #unity-container {
+                width: 750px;
+                height: 750px;
+            }
+            
+            #sidebar {
+                width: 280px;
+            }
+        }
+
+        @media (max-width: 1200px) {
+            #unity-container {
+                width: 700px;
+                height: 700px;
+            }
+        }
+
+        @media (max-width: 1100px) {
+            #unity-container {
+                width: 650px;
+                height: 650px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <aside id="sidebar">
+        <div class="logo-area">
+            <h3>ROBOTİK KODLAMA <b>AKADEMİSİ</b></h3>
+        </div>
+        
+        <div class="category-title">
+            <i class="fas fa-cubes"></i> Ahşap Robotik Setleri
+        </div>
+        
+        <div class="product-list">
+            <div class="product-item" data-color="red">
+                <i class="fa-solid fa-wind"></i> Değirmen 
+                <span class="badge">Yeni</span>
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+            <div class="product-item" data-color="blue">
+                <i class="fa-solid fa-car"></i> Mıknatıslı Araba 
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+            <div class="product-item" data-color="yellow">
+                <i class="fa-solid fa-plane"></i> Solar Uçak 
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+            <div class="product-item" data-color="purple">
+                <i class="fa-solid fa-lightbulb"></i> Tavşan Lamba 
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+            <div class="product-item" data-color="teal">
+                <i class="fa-solid fa-eye"></i> Periskop 
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+            
+            <div class="category-title" style="margin-top: 25px;">
+                <i class="fas fa-cogs"></i> Fizik & Mekanik
+            </div>
+            
+            <div class="product-item" data-color="orange">
+                <i class="fa-solid fa-flashlight"></i> El Feneri 
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+            <div class="product-item" data-color="green">
+                <i class="fa-solid fa-dove"></i> Denge Kuşu 
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+            <div class="product-item" data-color="blue">
+                <i class="fa-solid fa-fan"></i> Rüzgar Gülü 
+                <span class="badge">İndirim</span>
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+            <div class="product-item" data-color="gray">
+                <i class="fa-solid fa-monument"></i> Anıtkabir 
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+            <div class="product-item" data-color="orange">
+                <i class="fa-solid fa-scale-balanced"></i> Terazi 
+                <i class="fa-solid fa-lock lock"></i>
+            </div>
+        </div>
+    </aside>
+
+    <main id="main-viewport">
+      
+        
+        <nav class="top-nav">
+            <a href="https://robotikkodlamaakademisi.com.tr/" class="nav-circle" title="Anasayfa">
+                <i class="fa-solid fa-house"></i>
+            </a>
+            <a href="https://robotikkodlamaakademisi.com.tr/magaza" class="nav-circle shop" title="Sepete Git">
+                <i class="fa-solid fa-cart-shopping"></i>
+            </a>
+            <a href="#" class="nav-circle" title="Ayarlar">
+                <i class="fa-solid fa-gear"></i>
+            </a>
+        </nav>
+
+        <div id="unity-container">
+            <canvas id="unity-canvas" tabindex="-1"></canvas>
+            <div id="unity-loading-bar">
+                <div class="spinner"></div>
+                <div class="loading-text">Unity 3D Ortamı Hazırlanıyor</div>
+                <div class="loading-progress">
+                    <div class="loading-progress-bar" id="progress-bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="asistan-container">
+            <div class="asistan-balon" id="asistan-text">
+                <h4><i class="fas fa-robot"></i> Robotik Asistan</h4>
+                <p>Bu modelin parçalarını inceleyebilirsin:</p>
+                <ul class="parts-list">
+                    <li>Gövde <i class="fas fa-cube"></i></li>
+                    <li>Ayak Sağ <i class="fas fa-shoe-prints"></i></li>
+                    <li>Ayak Sol <i class="fas fa-shoe-prints"></i></li>
+                    <li>Destek <i class="fas fa-holding"></i></li>
+                    <li>Direkt Sağ <i class="fas fa-arrow-right"></i></li>
+                    <li>Direkt Sol <i class="fas fa-arrow-left"></i></li>
+                    <li>Motor Tutucu <i class="fas fa-cog"></i></li>
+                    <li>Motor <i class="fas fa-motor"></i></li>
+                    <li>Pervane <i class="fas fa-fan"></i></li>
+                    <li>Pil <i class="fas fa-battery-full"></i></li>
+                    <li>Kablo <i class="fas fa-plug"></i></li>
+                </ul>
+            </div>
+            <div class="asistan-profil" id="asistan-toggle">
+                <i class="fa-solid fa-robot"></i>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        var canvas = document.querySelector("#unity-canvas");
+        var loadingBar = document.querySelector("#unity-loading-bar");
+        var progressBar = document.getElementById('progress-bar');
+        var asistanBalon = document.getElementById('asistan-text');
+        var asistanToggle = document.getElementById('asistan-toggle');
+
+        // Asistan balonu aç/kapa
+        asistanToggle.addEventListener('click', function() {
+            asistanBalon.classList.toggle('active');
+            
+            // Asistan ikonunu değiştir
+            const icon = this.querySelector('i');
+            if (asistanBalon.classList.contains('active')) {
+                icon.className = 'fa-solid fa-times';
+                this.style.transform = 'rotate(90deg)';
+            } else {
+                icon.className = 'fa-solid fa-robot';
+                this.style.transform = 'rotate(0deg)';
+            }
+        });
+
+        // Yükleme simülasyonu
+        function simulateProgress() {
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 12;
+                if (progress > 100) progress = 100;
+                progressBar.style.width = progress + '%';
+                
+                if (progress >= 100) {
+                    clearInterval(interval);
+                }
+            }, 200);
+        }
+
+        simulateProgress();
+
+        var buildUrl = "Build";
+        var loaderUrl = buildUrl + "/WebBuild.loader.js";
+        var config = {
+            dataUrl: buildUrl + "/WebBuild.data",
+            frameworkUrl: buildUrl + "/WebBuild.framework.js",
+            codeUrl: buildUrl + "/WebBuild.wasm",
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "Robotik Akademi",
+            productName: "Unity Builder",
+            productVersion: "1.0",
+        };
+
+        var script = document.createElement("script");
+        script.src = loaderUrl;
+        
+        script.onload = () => {
+            createUnityInstance(canvas, config, (progress) => {
+                // Gerçek yükleme ilerlemesi
+                const progressPercent = Math.floor(progress * 100);
+                progressBar.style.width = progressPercent + '%';
+            }).then((unityInstance) => {
+                // Yükleme tamamlandığında
+                setTimeout(() => {
+                    loadingBar.style.opacity = '0';
+                    setTimeout(() => {
+                        loadingBar.style.display = "none";
+                        // Asistan balonunu otomatik aç
+                        asistanBalon.classList.add('active');
+                        asistanToggle.querySelector('i').className = 'fa-solid fa-times';
+                        asistanToggle.style.transform = 'rotate(90deg)';
+                    }, 300);
+                }, 500);
+            }).catch((msg) => { 
+                console.error(msg);
+                loadingBar.innerHTML = '<div style="text-align:center; color:#ef4444; padding: 40px;"><i class="fa-solid fa-triangle-exclamation" style="font-size:3rem; margin-bottom:20px;"></i><h3>Yükleme Hatası</h3><p>Unity ortamı yüklenirken bir hata oluştu.</p><button onclick="location.reload()" style="margin-top:20px; padding:10px 20px; background:#3b82f6; color:white; border:none; border-radius:8px; cursor:pointer;">Tekrar Dene</button></div>';
+            });
+        };
+        
+        script.onerror = () => {
+            loadingBar.innerHTML = '<div style="text-align:center; color:#ef4444; padding: 40px;"><i class="fa-solid fa-wifi-slash" style="font-size:3rem; margin-bottom:20px;"></i><h3>Bağlantı Hatası</h3><p>Unity dosyalarına erişilemiyor.</p><button onclick="location.reload()" style="margin-top:20px; padding:10px 20px; background:#3b82f6; color:white; border:none; border-radius:8px; cursor:pointer;">Tekrar Dene</button></div>';
+        };
+        
+        document.body.appendChild(script);
+
+        // Ürün hover efekti
+        document.querySelectorAll('.product-item').forEach(item => {
+            item.addEventListener('mouseenter', function() {
+                // Tüm ürünlerden aktif sınıfını kaldır
+                document.querySelectorAll('.product-item').forEach(el => {
+                    el.style.backgroundColor = 'white';
+                    el.style.color = '#475569';
+                });
+                
+                // Sadece hover yapılan ürünü vurgula
+                this.style.backgroundColor = 'rgba(59, 130, 246, 0.05)';
+                this.style.color = '#3b82f6';
+            });
+            
+            item.addEventListener('click', function() {
+                // Seçili ürünü belirle
+                document.querySelectorAll('.product-item').forEach(el => {
+                    el.style.borderColor = '#e2e8f0';
+                    el.style.boxShadow = 'none';
+                });
+                
+                this.style.borderColor = '#3b82f6';
+                this.style.boxShadow = '0 10px 25px rgba(59, 130, 246, 0.15)';
+            });
+        });
+
+        // Sayfa yüklendiğinde ilk ürünü seç
+        window.addEventListener('load', function() {
+            const firstProduct = document.querySelector('.product-item');
+            if (firstProduct) {
+                firstProduct.style.borderColor = '#3b82f6';
+                firstProduct.style.boxShadow = '0 10px 25px rgba(59, 130, 246, 0.15)';
+            }
+        });
+    </script>
+</body>
+</html>
