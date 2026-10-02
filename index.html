@@ -74,6 +74,22 @@
 
         <div id="hint">Parçayı sürükleyerek çevir • Tıklayınca yerine oturur</div>
 
+        <!-- Builder AI: yalnızca görsel asistan -->
+        <div id="builder">
+          <div class="ai-panel" id="aiPanel" hidden>
+            <div class="ai-head">
+              <span class="av"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>
+              <div class="ai-title"><b>Builder AI</b><small>Proje asistanı</small></div>
+              <button id="aiClose" class="ai-x" type="button" aria-label="Kapat">×</button>
+            </div>
+            <div class="ai-body" id="aiBody"></div>
+          </div>
+          <button class="ai-fab pulse" id="aiFab" type="button">
+            <span class="av"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>
+            <span>Builder AI</span>
+          </button>
+        </div>
+
         <div id="toast">
           <span>Harika! Modeli tamamladın! 🎉</span>
           <button id="again" type="button">Tekrar oyna</button>

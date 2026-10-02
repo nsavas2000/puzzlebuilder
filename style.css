@@ -413,3 +413,158 @@ html, body {
 @media (orientation: portrait) and (max-width: 900px) and (pointer: coarse) {
   #rotate { display: flex; }
 }
+
+/* ---------- Builder AI (sağ alt) ---------- */
+#builder {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+#builder .av {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4f6bff, #8a5cff);
+}
+#builder .av svg {
+  width: 17px;
+  height: 17px;
+  fill: #fff;
+  stroke: #fff;
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.ai-fab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px 6px 6px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(28, 36, 64, 0.16);
+  transition: transform 0.12s, border-color 0.15s;
+}
+.ai-fab:hover { border-color: var(--accent); }
+.ai-fab:active { transform: scale(0.96); }
+.ai-fab.open { border-color: var(--accent); }
+.ai-fab.pulse { animation: aiPulse 2.2s ease-in-out infinite; }
+@keyframes aiPulse {
+  0%, 100% { box-shadow: 0 6px 20px rgba(28, 36, 64, 0.16), 0 0 0 0 rgba(79, 107, 255, 0.45); }
+  50%      { box-shadow: 0 6px 20px rgba(28, 36, 64, 0.16), 0 0 0 10px rgba(79, 107, 255, 0); }
+}
+
+.ai-panel {
+  width: min(310px, calc(100vw - 48px));
+  max-height: min(400px, calc(100dvh - 200px));
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  box-shadow: 0 16px 40px rgba(28, 36, 64, 0.22);
+  overflow: hidden;
+  animation: aiIn 0.28s cubic-bezier(.2, 1.3, .4, 1);
+  transform-origin: 100% 100%;
+}
+.ai-panel[hidden] { display: none; }
+@keyframes aiIn { from { opacity: 0; transform: scale(0.88) translateY(10px); } }
+
+.ai-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.ai-title { flex: 1; line-height: 1.2; }
+.ai-title b { display: block; font-size: 14px; font-weight: 800; }
+.ai-title small { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.ai-x {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.ai-x:hover { background: #eef1f9; color: var(--ink); }
+
+.ai-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.msg {
+  max-width: 86%;
+  padding: 9px 13px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  border-radius: 16px;
+  animation: msgIn 0.2s ease-out;
+}
+@keyframes msgIn { from { opacity: 0; transform: translateY(6px); } }
+.msg.bot { align-self: flex-start; background: #f1f4fb; border-bottom-left-radius: 5px; }
+.msg.me  { align-self: flex-end; color: #fff; background: var(--accent); border-bottom-right-radius: 5px; }
+.msg.typing { display: flex; gap: 4px; padding: 12px 14px; }
+.msg.typing i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9aa6c6;
+  animation: dot 1s infinite ease-in-out;
+}
+.msg.typing i:nth-child(2) { animation-delay: 0.15s; }
+.msg.typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; } 30% { transform: translateY(-4px); opacity: 1; } }
+
+.chips { align-self: flex-end; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; animation: msgIn 0.25s ease-out; }
+.chip {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--accent);
+  background: #fff;
+  border: 1.5px solid var(--accent);
+  border-radius: 99px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.chip:hover { color: #fff; background: var(--accent); }
+
+#hint { max-width: calc(100% - 340px); }
+
+@media (max-height: 520px) {
+  #builder { right: 8px; bottom: 6px; gap: 6px; }
+  .ai-fab { font-size: 12px; padding: 4px 12px 4px 4px; }
+  #builder .av { width: 26px; height: 26px; }
+  .ai-panel { max-height: calc(100dvh - 130px); }
+  .msg, .chip { font-size: 12px; }
+  #hint { max-width: calc(100% - 200px); }
+}

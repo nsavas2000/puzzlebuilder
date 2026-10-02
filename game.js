@@ -14,7 +14,7 @@ const FIT_MARGIN = 0.7;                     // modelin etrafında bırakılan bo
 const DEFAULT_DIR = new THREE.Vector3(0.95, 0.72, 1.15).normalize(); // başlangıç bakış yönü
 
 // Oyun bitince dönecek parçalar (isim içinde geçmesi yeterli, büyük/küçük harf fark etmez)
-const SPIN_PARTS = ['parca_10', 'parca_11', 'parca_12', 'parca_13'];
+const SPIN_PARTS = ['parca_10', 'parca_11', 'parca_13', 'parca_14', 'pervane'];
 const SPIN_AXIS = {};                       // gerekirse eksen: { parca_12: 'z' }  (x, y veya z)
 const SPIN_SPEED = 7;                       // radyan/sn
 
@@ -717,3 +717,77 @@ renderer.setAnimationLoop(() => {
     }
   }
 });
+
+// ======================================================================
+//  BUILDER AI (sağ altta, yalnızca görsel – hazır senaryo, gerçek yapay zekâ yok)
+// ======================================================================
+const aiFab = $('aiFab'), aiPanel = $('aiPanel'), aiBody = $('aiBody');
+const AI_SCRIPT = {
+  intro: ['Merhaba! Ben Builder AI 👋', 'Bu projede ahşap parçalardan bir robot aracı birlikte kuruyoruz.'],
+  steps: [
+    { q: 'Daha önce 3D puzzle yaptın mı?',
+      opts: [['Evet, yaptım', 'Harika! O zaman hızlı ilerlersin 🚀'], ['İlk kez yapıyorum', 'Sorun değil, adım adım birlikte yaparız 😊']] },
+    { q: 'Parçaları nasıl yerleştirmek istersin?',
+      opts: [['Sırayla', 'Güzel, listenin en üstünden başla.'], ['Kendim seçeyim', 'Olur, istediğin parçaya tıkla.']] },
+  ],
+  outro: ['Soldaki bir parçaya tıkla, yerine uçup oturur ✨', 'Sağ üstteki küple modeli her açıdan inceleyebilirsin.'],
+};
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+let aiStarted = false;
+
+function aiScroll() { aiBody.scrollTop = aiBody.scrollHeight; }
+function aiMsg(text, who) {
+  const d = document.createElement('div');
+  d.className = `msg ${who}`;
+  d.textContent = text;
+  aiBody.appendChild(d);
+  aiScroll();
+}
+async function aiSay(lines) {
+  for (const line of lines) {
+    const t = document.createElement('div');
+    t.className = 'msg bot typing';
+    t.innerHTML = '<i></i><i></i><i></i>';
+    aiBody.appendChild(t);
+    aiScroll();
+    await wait(650);
+    t.remove();
+    aiMsg(line, 'bot');
+    await wait(180);
+  }
+}
+function aiChoose(labels) {
+  return new Promise((res) => {
+    const row = document.createElement('div');
+    row.className = 'chips';
+    labels.forEach((l, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.textContent = l;
+      b.onclick = () => { row.remove(); aiMsg(l, 'me'); res(i); };
+      row.appendChild(b);
+    });
+    aiBody.appendChild(row);
+    aiScroll();
+  });
+}
+async function aiRun() {
+  await aiSay(AI_SCRIPT.intro);
+  for (const s of AI_SCRIPT.steps) {
+    await aiSay([s.q]);
+    const i = await aiChoose(s.opts.map((o) => o[0]));
+    await aiSay([s.opts[i][1]]);
+  }
+  await aiSay(AI_SCRIPT.outro);
+  await aiChoose(['Başlayalım! 🚀']);
+  aiToggle(false);
+}
+function aiToggle(open) {
+  aiPanel.hidden = !open;
+  aiFab.classList.toggle('open', open);
+  aiFab.classList.remove('pulse');
+  if (open && !aiStarted) { aiStarted = true; aiRun(); }
+}
+aiFab.onclick = () => aiToggle(aiPanel.hidden);
+$('aiClose').onclick = () => aiToggle(false);
