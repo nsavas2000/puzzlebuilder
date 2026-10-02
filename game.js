@@ -13,8 +13,8 @@ const ORTHO_DIST = MODEL_SIZE * 4;          // ortografik kameranın uzaklığı
 const FIT_MARGIN = 0.7;                     // modelin etrafında bırakılan boşluk (büyüdükçe model küçülür)
 const DEFAULT_DIR = new THREE.Vector3(0.95, 0.72, 1.15).normalize(); // başlangıç bakış yönü
 
-// Oyun bitince dönecek parçalar (isim içinde geçmesi yeterli, büyük/küçük harf fark etmez)
-const SPIN_PARTS = ['parca_10', 'parca_11', 'parca_13', 'parca_14', 'pervane'];
+// Animasyon butonuna basılınca dönecek parçalar (isim içinde geçmesi yeterli, büyük/küçük harf fark etmez)
+const SPIN_PARTS = ['parca_10', 'parca_11', 'parca_12', 'parca_13'];
 const SPIN_AXIS = {};                       // gerekirse eksen: { parca_12: 'z' }  (x, y veya z)
 const SPIN_SPEED = 7;                       // radyan/sn
 
@@ -31,7 +31,7 @@ const ZERO = new V3();
 const $ = (id) => document.getElementById(id);
 
 const stageEl = $('stage'), listEl = $('pieceList'), countEl = $('count'), barEl = $('bar');
-const leftEl = $('left'), toastEl = $('toast'), hintEl = $('hint'), cubeEl = $('cube'), cubeWrap = $('cubeWrap');
+const animBtn = $('animBtn'), leftEl = $('left'), toastEl = $('toast'), hintEl = $('hint'), cubeEl = $('cube'), cubeWrap = $('cubeWrap');
 const DEFAULT_HINT = hintEl.textContent;
 
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -82,6 +82,7 @@ scene.add(modelGroup);
 let modelRadius = MODEL_SIZE * 0.7;
 let loaded = false, finished = false, placedCount = 0;
 let anim = null;
+let animating = false;                    // animasyon butonuyla açılır
 let userMoved = false;
 
 function resize() {
@@ -440,6 +441,29 @@ function updateInfo() {
   leftEl.textContent = left ? `${left} parça kaldı` : 'Hepsi yerinde';
 }
 
+function removeCard(p) {
+  const c = p.card;
+  c.style.height = `${c.offsetHeight}px`;
+  void c.offsetHeight;
+  c.classList.add('leaving');
+  c.style.height = '0px';
+  clearTimeout(p.goneTimer);
+  p.goneTimer = setTimeout(() => c.classList.add('gone'), 560);
+}
+function restoreCard(p) {
+  clearTimeout(p.goneTimer);
+  const c = p.card;
+  c.classList.remove('gone', 'leaving', 'done');
+  c.style.height = '';
+}
+
+function setAnimating(on) {
+  animating = on;
+  animBtn.textContent = on ? '■ Animasyonu durdur' : '▶ Animasyonu başlat';
+  animBtn.classList.toggle('playing', on);
+}
+animBtn.onclick = () => { initAudio(); setAnimating(!animating); };
+
 function flightStart(p) {
   camera.updateMatrixWorld();
   const z = p.target.clone().project(camera).z;
@@ -450,7 +474,7 @@ function placePiece(p) {
   if (!loaded || p.state !== 'idle') return;
   initAudio();
   p.state = 'flying';
-  p.card.classList.add('done');
+  removeCard(p);
   p.tag.textContent = 'Gidiyor…';
   sfx.pop();
 
@@ -484,17 +508,18 @@ function finish() {
   finished = true;
   updateInfo();
   toastEl.classList.add('show');
-  hintEl.textContent = 'Modeli döndürerek her açıdan inceleyebilirsin.';
+  hintEl.textContent = 'Animasyon butonuna bas, modeli döndürerek her açıdan incele.';
   burst(new V3(0, MODEL_SIZE * 0.3, 0), 150, 4.5);
   setTimeout(() => burst(new V3(0, MODEL_SIZE * 0.3, 0), 110, 5.5), 450);
   sfx.win();
-  controls.autoRotate = true;
+  controls.autoRotate = false;
 }
 
 function restart() {
   finished = false;
   placedCount = 0;
   flights.length = 0;
+  setAnimating(false);
   toastEl.classList.remove('show');
   hintEl.textContent = DEFAULT_HINT;
   controls.autoRotate = false;
@@ -507,7 +532,7 @@ function restart() {
     p.ghost.visible = true;
     p.flash = 0;
     if (p.spin) p.spin.v = 0;
-    p.card.classList.remove('done');
+    restoreCard(p);
     p.tag.textContent = 'Tıkla';
     renderThumb(p);
   });
@@ -695,10 +720,11 @@ renderer.setAnimationLoop(() => {
     } else if (p.mat.emissiveIntensity) {
       p.mat.emissiveIntensity = 0;
     }
-    // Oyun bitince pervane vb. parçalar kendi ekseninde döner
-    if (finished && p.spin && p.state === 'placed') {
-      p.spin.v = THREE.MathUtils.lerp(p.spin.v, SPIN_SPEED, 1 - Math.exp(-dt * 1.5));
-      p.mesh.rotateOnAxis(p.spin.axis, p.spin.v * dt);
+    // Animasyon açıkken parca_10-13 kendi ekseninde döner
+    if (p.spin && p.state === 'placed') {
+      const goal = finished && animating ? SPIN_SPEED : 0;
+      p.spin.v = THREE.MathUtils.lerp(p.spin.v, goal, 1 - Math.exp(-dt * 1.5));
+      if (Math.abs(p.spin.v) > 0.001) p.mesh.rotateOnAxis(p.spin.axis, p.spin.v * dt);
     }
   });
 

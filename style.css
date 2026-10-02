@@ -177,6 +177,16 @@ html, body {
   filter: saturate(0.35);
   pointer-events: none;
 }
+.card.leaving {
+  pointer-events: none;
+  margin-bottom: -10px;
+  opacity: 0;
+  transform: scale(0.92);
+  border-width: 0;
+  transition: height 0.5s cubic-bezier(.4, 0, .2, 1), margin 0.5s cubic-bezier(.4, 0, .2, 1),
+    opacity 0.3s, transform 0.5s, border-width 0.5s;
+}
+.card.gone { display: none; }
 .card.done .tag { color: #2f9e62; background: #e3f6ec; }
 
 /* ---------- Sağ: model ---------- */
@@ -321,6 +331,11 @@ html, body {
   transition: opacity 0.4s, transform 0.5s cubic-bezier(.2, 1.6, .4, 1);
   z-index: 4;
 }
+#toast button.alt {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+#toast button.playing { background: #ff9a24; }
 #toast.show {
   opacity: 1;
   transform: translate(-50%, 0) scale(1);
