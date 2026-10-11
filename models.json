@@ -1,0 +1,117 @@
+{
+  "_help": "Her model bir kayit: id (benzersiz), file (bu klasordeki .glb), name (dil koduna gore ad), colors (istege bagli parca rengi), animation (null = animasyon yok). Animasyon turleri: {\"type\":\"clouds\"} bulut gecer | {\"type\":\"snow\"} kar yagar | {\"type\":\"ball\",\"part\":\"parca_10\"} top labirentte gezer | {\"type\":\"spin\",\"parts\":[\"parca_07\"],\"axis\":{\"parca_07\":\"x\"},\"offset\":{\"parca_07\":[0,15,25]}} her parca kendi pivotu etrafinda doner (offset: pivotun parca merkezine gore kaymasi, mm) | {\"type\":\"group\",\"range\":[4,16]} parca_04..parca_16 tek govde gibi doner (exclude:[6,7,8] ile bazi parcalar sabit kalir; axis ve offset:[x,y,z] istege bagli). Ortak ayar: speed (rad/sn). clouds icin direction: [x,y,z]. Pivotu gorerek ayarlamak icin sayfayi index.html?pivot ile ac.",
+  "default": "ucak",
+  "models": [
+    {
+      "id": "ucak",
+      "file": "ucak.glb",
+      "name": {
+        "tr": "Uçak",
+        "en": "Airplane",
+        "ar": "طائرة",
+        "ru": "Самолёт"
+      },
+      "animation": {
+        "type": "clouds",
+        "direction": [
+          -1,
+          0,
+          0
+        ],
+        "speed": 2.4
+      }
+    },
+    {
+      "id": "noel",
+      "file": "noel.glb",
+      "name": {
+        "tr": "Noel",
+        "en": "Christmas",
+        "ar": "عيد الميلاد",
+        "ru": "Рождество"
+      },
+      "animation": {
+        "type": "snow"
+      }
+    },
+    {
+      "id": "labirent",
+      "file": "labirent.glb",
+      "name": {
+        "tr": "Labirent",
+        "en": "Maze",
+        "ar": "متاهة",
+        "ru": "Лабиринт"
+      },
+      "colors": {
+        "parca_10": "#e11d1d"
+      },
+      "animation": {
+        "type": "ball",
+        "part": "parca_10",
+        "speed": 0.9
+      }
+    },
+    {
+      "id": "tırtıl",
+      "file": "tırtıl.glb",
+      "name": {
+        "tr": "Tırtıl",
+        "en": "Caterpillar",
+        "ar": "يسروع",
+        "ru": "Гусеница"
+      },
+      "colors": {
+        "parca_04": "#262323",
+        "parca_03": "#d8ef29"
+      },
+      "animation": {
+        "type": "spin",
+        "parts": [
+          "parca_07",
+          "parca_08"
+        ],
+        "speed": 3.5,
+        "axis": {
+          "parca_07": "x",
+          "parca_08": "x"
+        },
+        "offset": {
+          "parca_07": [
+            0,
+            15,
+            25
+          ],
+          "parca_08": [
+            0,
+            15,
+            25
+          ]
+        }
+      }
+    },
+    {
+      "id": "donmedolap",
+      "file": "donmedolap.glb",
+      "name": {
+        "tr": "Dönme Dolap",
+        "en": "Ferris Wheel",
+        "ar": "عجلة فيريس",
+        "ru": "Колесо обозрения"
+      },
+      "animation": {
+        "type": "group",
+        "range": [
+          4,
+          16
+        ],
+        "exclude": [
+          6,
+          7,
+          8
+        ],
+        "speed": 0.7
+      }
+    }
+  ]
+}

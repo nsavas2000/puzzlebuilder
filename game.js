@@ -1,22 +1,31 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { LANGS, DEFAULT_LANG, FALLBACK_LANG } from './lang.js';
+import { createBuilderAI } from './builder-ai.js';
+import { createEffects, nameMatches } from './effects.js';
 
 // ======================================================================
 //  AYARLAR
 // ======================================================================
-const MODEL_URL = 'model3.glb';
+const MODELS_DIR = 'models/';                 // .glb dosyaları burada
+const MODELS_INDEX = 'models/models.json';    // model listesi
+const MODELS_INDEX_ALT = 'models.json';       // alternatif yol (kök dizin)
+const FALLBACK_MODELS = [
+  { id: "ucak", file: "ucak.glb", name: { tr: "Uçak", en: "Airplane", ar: "طائرة", ru: "Самолёт" }, animation: { type: "clouds", direction: [-1, 0, 0], speed: 2.4 } },
+  { id: "noel", file: "noel.glb", name: { tr: "Noel", en: "Christmas", ar: "عيد الميلاد", ru: "Рождество" }, animation: { type: "snow" } },
+  { id: "labirent", file: "labirent.glb", name: { tr: "Labirent", en: "Maze", ar: "متاهة", ru: "Лабиринт" }, colors: { "parca_10": "#e11d1d" }, animation: { type: "ball", part: "parca_10", speed: 0.9 } },
+];
+
 const MODEL_SIZE = 6;                       // modelin sahnedeki en büyük boyutu
 const FLY_TIME = 1.1;                       // parçanın yerine gitme süresi (sn)
 const ORTHO_H = 10;                         // ortografik kameranın yarı yüksekliği
 const ORTHO_DIST = MODEL_SIZE * 4;          // ortografik kameranın uzaklığı
 const FIT_MARGIN = 0.7;                     // modelin etrafında bırakılan boşluk (büyüdükçe model küçülür)
 const DEFAULT_DIR = new THREE.Vector3(0.95, 0.72, 1.15).normalize(); // başlangıç bakış yönü
-
-// Animasyon butonuna basılınca dönecek parçalar (isim içinde geçmesi yeterli, büyük/küçük harf fark etmez)
-const SPIN_PARTS = ['parca_10', 'parca_11', 'parca_12', 'parca_13'];
-const SPIN_AXIS = {};                       // gerekirse eksen: { parca_12: 'z' }  (x, y veya z)
-const SPIN_SPEED = 7;                       // radyan/sn
+const DEFAULT_SPIN_SPEED = 7;               // animasyon hızı (radyan/sn), models.json'da model başına değişir
+// Sol paneldeki parçaların boyutu: 0 = hepsi kartı doldurur, 1 = gerçek oranlarıyla (büyük parça büyük, küçük parça küçük görünür)
+const THUMB_REL = 0.4;
 
 const WOOD = [0xe2bf8a, 0xd8ae78, 0xeccfa3];       // ahşap tonları (parçalara sırayla verilir)
 const GHOST_COLOR = new THREE.Color(0x8fa8e6);
@@ -32,10 +41,34 @@ const $ = (id) => document.getElementById(id);
 
 const stageEl = $('stage'), listEl = $('pieceList'), countEl = $('count'), barEl = $('bar');
 const animBtn = $('animBtn'), leftEl = $('left'), toastEl = $('toast'), hintEl = $('hint'), cubeEl = $('cube'), cubeWrap = $('cubeWrap');
-const DEFAULT_HINT = hintEl.textContent;
+const nextModelBtn = $('nextModel'), modeOrderedBtn = $('modeOrdered'), modeFreeBtn = $('modeFree');
 
 const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+
+// ======================================================================
+//  DİL (metinler lang.js içinde)
+// ======================================================================
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { /* özel mod vb. */ } },
+};
+let lang = LANGS[store.get('lang')] ? store.get('lang') : (LANGS[DEFAULT_LANG] ? DEFAULT_LANG : Object.keys(LANGS)[0]);
+
+// "a.b.c" yolunu seçili dilde, yoksa yedek dilde ara
+function raw(key) {
+  for (const code of [lang, FALLBACK_LANG]) {
+    let v = LANGS[code] && LANGS[code].t;
+    for (const k of key.split('.')) v = v == null ? undefined : v[k];
+    if (v !== undefined) return v;
+  }
+  return key;
+}
+function t(key, vars) {
+  const s = raw(key);
+  if (typeof s !== 'string') return key;
+  return vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)) : s;
+}
 
 // ======================================================================
 //  ANA SAHNE (sağdaki model görünümü)
@@ -76,14 +109,19 @@ const fill = new THREE.DirectionalLight(0xdfe8ff, 0.7);
 fill.position.set(-8, 5, -6);
 scene.add(fill);
 
-const modelGroup = new THREE.Group();
+const modelGroup = new THREE.Group();   // modele ait her şey (parçalar, hayaletler, zemin) burada; model değişince boşaltılır
 scene.add(modelGroup);
 
 let modelRadius = MODEL_SIZE * 0.7;
 let loaded = false, finished = false, placedCount = 0;
-let anim = null;
-let animating = false;                    // animasyon butonuyla açılır
+let loadState = 'loading';              // 'loading' | 'ready' | 'error'
+let anim = null;                        // kamera geçiş animasyonu
+let animating = false;                  // model animasyonu (butonla açılır)
 let userMoved = false;
+let models = [], currentModel = null, modelAnim = null;
+let mode = store.get('mode') === 'free' ? 'free' : 'ordered';
+let maxPieceRadius = 1;
+let groundY = 0;                        // modelin zemin yüksekliği (efektler kullanır)
 
 function resize() {
   const w = Math.max(1, stageEl.clientWidth);
@@ -364,7 +402,9 @@ function renderThumb(p) {
   thumbMesh.geometry = p.geom;
   thumbMesh.material = p.thumbMat;
   thumbMesh.quaternion.copy(p.thumbQuat);
-  const d = (p.radius / Math.sin(rad(thumbCam.fov / 2))) * 1.1;
+  // Parça boyutu modele göre ölçeklenir: büyük parça büyük, küçük parça küçük görünür (THUMB_REL ile ayarlanır)
+  const r = THREE.MathUtils.lerp(p.radius, maxPieceRadius, THUMB_REL);
+  const d = (r / Math.sin(rad(thumbCam.fov / 2))) * 1.1;
   thumbCam.position.set(0, 0, d);
   thumbCam.near = d * 0.1;
   thumbCam.far = d * 3;
@@ -387,19 +427,89 @@ const io = new IntersectionObserver((entries) => {
   });
 }, { root: listEl, threshold: 0.05 });
 
+const nextPiece = () => pieces.find((p) => p.state === 'idle');
+const isLocked = (p) => mode === 'ordered' && p.state === 'idle' && p !== nextPiece();
+const pieceLabel = (p) => (p.num != null ? t('part', { n: p.num }) : (p.name || t('part', { n: p.index })));
+
+// ---- ipucu çubuğu ----
+let hintTimer = 0;
+function refreshHint() {
+  if (finished) hintEl.textContent = modelAnim ? t('hintFinishedAnim') : t('hintFinished');
+  else hintEl.textContent = mode === 'ordered' ? t('hintOrdered') : t('hint');
+}
+function flashHint(text, ms = 2600) {
+  clearTimeout(hintTimer);
+  hintEl.textContent = text;
+  hintTimer = setTimeout(refreshHint, ms);
+}
+
+// ---- sıralı / serbest mod ----
+function setMode(m) {
+  mode = m === 'free' ? 'free' : 'ordered';
+  store.set('mode', mode);
+  modeOrderedBtn.classList.toggle('on', mode === 'ordered');
+  modeFreeBtn.classList.toggle('on', mode === 'free');
+  if (hoverPiece && isLocked(hoverPiece)) hoverPiece = null;
+  updateCardStates();
+  refreshHint();
+}
+modeOrderedBtn.onclick = () => setMode('ordered');
+modeFreeBtn.onclick = () => setMode('free');
+
+// Kartların etiketini / etiket rozetini / kilit durumunu güncelle
+function updateCardStates() {
+  const nx = nextPiece();
+  pieces.forEach((p) => {
+    if (!p.card) return;
+    const locked = isLocked(p);
+    const isNext = mode === 'ordered' && p === nx && !finished;
+    p.lbl.textContent = pieceLabel(p);
+    p.card.classList.toggle('locked', locked);
+    p.card.classList.toggle('next', isNext);
+    p.tag.textContent =
+      p.state === 'placed' ? t('tag.placed')
+      : p.state === 'flying' ? t('tag.flying')
+      : locked ? t('tag.locked')
+      : isNext ? t('tag.next')
+      : t('tag.tap');
+  });
+}
+
+// Sıradaki (ya da verilen) parçayı listede göster, 3B'de hayaletini parlat
+function highlightPiece(p = nextPiece()) {
+  if (!p || !p.card) return;
+  p.card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  p.card.classList.remove('blink');
+  void p.card.offsetWidth;
+  p.card.classList.add('blink');
+  p.hintUntil = performance.now() + 2600;
+  clearTimeout(p.blinkTimer);
+  p.blinkTimer = setTimeout(() => p.card.classList.remove('blink'), 2200);
+}
+
+function lockedTap(p) {
+  p.card.classList.remove('shake');
+  void p.card.offsetWidth;
+  p.card.classList.add('shake');
+  const nx = nextPiece();
+  if (nx) { flashHint(t('lockedHint', { next: pieceLabel(nx) })); highlightPiece(nx); }
+  ai.notify('locked');
+}
+
 function buildCard(p) {
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `<canvas width="${TW}" height="${TH}"></canvas>
-    <div class="meta"><b>${p.label}</b><span class="tag">Tıkla</span></div>`;
+    <div class="meta"><b></b><span class="tag"></span></div>`;
   listEl.appendChild(card);
   p.card = card;
+  p.lbl = card.querySelector('b');
   p.tag = card.querySelector('.tag');
   p.canvas = card.querySelector('canvas');
   p.ctx = p.canvas.getContext('2d');
   io.observe(card);
 
-  card.addEventListener('pointerenter', () => { hoverPiece = p; });
+  card.addEventListener('pointerenter', () => { if (!isLocked(p)) hoverPiece = p; });
   card.addEventListener('pointerleave', () => { if (hoverPiece === p) hoverPiece = null; });
 
   // Sürükle = parçayı çevir, kısa dokunuş/tıklama = yerine gönder
@@ -407,7 +517,7 @@ function buildCard(p) {
   p.canvas.addEventListener('pointerdown', (e) => {
     initAudio();
     p.canvas.setPointerCapture(e.pointerId);
-    hoverPiece = p;
+    if (!isLocked(p)) hoverPiece = p;
     p.grab = true;
     drag = { x: e.clientX, y: e.clientY, moved: 0, t: performance.now() };
   });
@@ -433,12 +543,23 @@ function buildCard(p) {
 }
 
 function updateInfo() {
-  if (!pieces.length) return;
+  if (loadState === 'error') {
+    countEl.textContent = t('loadFail');
+    barEl.style.width = '0%';
+    leftEl.textContent = '';
+    return;
+  }
+  if (!pieces.length) {
+    countEl.textContent = t('loading');
+    barEl.style.width = '0%';
+    leftEl.textContent = '';
+    return;
+  }
   const total = pieces.length;
-  countEl.textContent = finished ? 'Tamamlandı!' : `${placedCount} / ${total}`;
+  countEl.textContent = finished ? t('complete') : `${placedCount} / ${total}`;
   barEl.style.width = `${(placedCount / total) * 100}%`;
   const left = total - placedCount;
-  leftEl.textContent = left ? `${left} parça kaldı` : 'Hepsi yerinde';
+  leftEl.textContent = left ? t('left', { n: left }) : t('allPlaced');
 }
 
 function removeCard(p) {
@@ -453,14 +574,17 @@ function removeCard(p) {
 function restoreCard(p) {
   clearTimeout(p.goneTimer);
   const c = p.card;
-  c.classList.remove('gone', 'leaving', 'done');
+  c.classList.remove('gone', 'leaving', 'done', 'shake', 'blink');
   c.style.height = '';
 }
 
+function refreshAnimBtn() {
+  animBtn.textContent = animating ? t('animStop') : t('animStart');
+  animBtn.classList.toggle('playing', animating);
+}
 function setAnimating(on) {
   animating = on;
-  animBtn.textContent = on ? '■ Animasyonu durdur' : '▶ Animasyonu başlat';
-  animBtn.classList.toggle('playing', on);
+  refreshAnimBtn();
 }
 animBtn.onclick = () => { initAudio(); setAnimating(!animating); };
 
@@ -472,10 +596,11 @@ function flightStart(p) {
 
 function placePiece(p) {
   if (!loaded || p.state !== 'idle') return;
+  if (isLocked(p)) { lockedTap(p); return; }
   initAudio();
   p.state = 'flying';
+  updateCardStates();
   removeCard(p);
-  p.tag.textContent = 'Gidiyor…';
   sfx.pop();
 
   const from = flightStart(p);
@@ -496,32 +621,148 @@ function land(f) {
   p.mesh.scale.setScalar(1);
   p.ghost.visible = false;
   p.flash = 1;
-  p.tag.textContent = 'Yerleşti ✓';
   placedCount++;
   sfx.knock();
   burst(p.target, 24, 2.2);
   updateInfo();
+  updateCardStates();
   if (placedCount === pieces.length) finish();
+  else ai.notify('placed');
 }
 
 function finish() {
   finished = true;
   updateInfo();
+  updateCardStates();
   toastEl.classList.add('show');
-  hintEl.textContent = 'Animasyon butonuna bas, modeli döndürerek her açıdan incele.';
+  refreshHint();
   burst(new V3(0, MODEL_SIZE * 0.3, 0), 150, 4.5);
   setTimeout(() => burst(new V3(0, MODEL_SIZE * 0.3, 0), 110, 5.5), 450);
   sfx.win();
   controls.autoRotate = false;
+  ai.notify('finished');
+}
+
+
+// ======================================================================
+//  DÖNEN PARÇALAR  (models.json → animation.type = "spin" ya da "group")
+//
+//  "spin"  : listedeki her parça kendi pivotu etrafında döner (ör. tırtıl)
+//            "parts": ["parca_07","parca_08"], "axis": {"parca_07":"x"}, "offset": {"parca_07":[x,y,z]}
+//  "group" : birden çok parça TEK GÖVDE gibi ortak pivot etrafında döner (ör. dönme dolap)
+//            "range": [4,16]  (parca_04 … parca_16)  ya da  "parts": [...]
+//            "exclude": [6,7,8]  → bu parçalar gruptan çıkar, sabit kalır
+//            "axis": "z" (verilmezse en ince yön), "offset": [x,y,z]
+//
+//  offset = pivotun, parçanın (grubun) geometrik merkezine göre kaydırması.
+//  Birim milimetre (glb metre ise); farklıysa "unit" yaz (mm için 0.001, m için 1).
+//  X sağ, Y yukarı, Z izleyiciye doğru (modelin ilk yüklenen duruşunda).
+//  Pivotu elle bulmak için sayfayı ?pivot ile aç.
+// ======================================================================
+const spinRigs = [];
+const _spinQ = new THREE.Quaternion();
+const _spinD = new V3();
+
+function applyRig(rig) {                       // pivotu offset'ten yeniden hesapla
+  const k = rig.unit * rig.S;
+  rig.pivot.copy(rig.center).add(_spinD.set(rig.mm[0] * k, rig.mm[1] * k, rig.mm[2] * k));
+  rig.dirty = true;
+}
+
+function addRig(key, members, axis, center, mm, unit, S) {
+  const m3 = [Number(mm[0]) || 0, Number(mm[1]) || 0, Number(mm[2]) || 0];
+  const rig = { key, members, axis, center, mm: m3, unit, S, pivot: new V3(), angle: 0, v: 0, dirty: false };
+  applyRig(rig);
+  rig.dirty = false;
+  members.forEach((p) => { p.spin = rig; });
+  spinRigs.push(rig);
+}
+
+function setupSpin(S) {
+  spinRigs.length = 0;
+  const a = modelAnim;
+  if (!a || (a.type !== 'spin' && a.type !== 'group')) return;
+  const unit = a.unit != null ? Number(a.unit) : 0.001;
+  const thinAxis = (size) => { const z = [size.x, size.y, size.z]; return AXES[z.indexOf(Math.min(...z))]; };
+  const axisOf = (name, fallback) => {
+    const i = typeof name === 'string' ? 'xyz'.indexOf(name.toLowerCase()) : -1;
+    return (name && i >= 0 ? AXES[i] : fallback).clone();
+  };
+
+  if (a.type === 'spin') {
+    a.parts.forEach((key) => {
+      const p = pieces.find((q) => nameMatches(q.name, key));
+      if (!p) { console.warn(`[animasyon] "${key}" adlı parça modelde yok`); return; }
+      const mm = a.offset && Array.isArray(a.offset[key]) ? a.offset[key] : [0, 0, 0];
+      addRig(key, [p], axisOf(a.axis && a.axis[key], thinAxis(p.size)), p.target.clone(), mm, unit, S);
+    });
+    return;
+  }
+
+  // group: üyeleri bul, hepsini kapsayan kutunun merkezi = dönüş merkezi
+  const inList = (p) => (a.parts || []).some((k) => nameMatches(p.name, k));
+  const inRange = (p) => a.range && p.num != null && p.num >= a.range[0] && p.num <= a.range[1];
+  // "exclude": [6,7,8] ya da ["parca_06"] → bu parçalar gruptan çıkar, yerinde sabit kalır
+  const skip = (p) => (a.exclude || []).some((k) => (typeof k === 'number' ? p.num === k : nameMatches(p.name, k)));
+  const members = pieces.filter((p) => (inList(p) || inRange(p)) && !skip(p));
+  if (!members.length) { console.warn('[animasyon] group: eşleşen parça yok'); return; }
+  const lo = new V3(Infinity, Infinity, Infinity), hi = new V3(-Infinity, -Infinity, -Infinity);
+  members.forEach((p) => {
+    lo.min(_spinD.copy(p.target).addScaledVector(p.size, -0.5));
+    hi.max(_spinD.copy(p.target).addScaledVector(p.size, 0.5));
+  });
+  const center = lo.clone().add(hi).multiplyScalar(0.5);
+  const size = hi.clone().sub(lo);
+  const mm = Array.isArray(a.offset) ? a.offset : [0, 0, 0];
+  addRig('group', members, axisOf(a.axis, thinAxis(size)), center, mm, unit, S);
+}
+
+function updateSpin(dt, speed) {
+  const go = finished && animating;
+  for (const rig of spinRigs) {
+    if (!rig.members.every((p) => p.state === 'placed')) continue;
+    rig.v = THREE.MathUtils.lerp(rig.v, go ? speed : 0, 1 - Math.exp(-dt * 1.5));
+    if (Math.abs(rig.v) > 0.001) { rig.angle = (rig.angle + rig.v * dt) % (Math.PI * 2); rig.dirty = true; }
+    if (!rig.dirty) continue;
+    rig.dirty = false;
+    // pivot etrafında döndür: yeni konum = pivot + R·(merkez − pivot), yeni yönelim = R
+    _spinQ.setFromAxisAngle(rig.axis, rig.angle);
+    for (const p of rig.members) {
+      p.mesh.quaternion.copy(_spinQ);
+      p.mesh.position.copy(p.target).sub(rig.pivot).applyQuaternion(_spinQ).add(rig.pivot);
+    }
+  }
+}
+
+function resetSpin() { spinRigs.forEach((r) => { r.v = 0; r.angle = 0; r.dirty = false; }); }
+
+// Pivot aracı için: bütün parçaları anında yerleştir (bitiş durumuna geç)
+function placeAllInstant() {
+  if (!loaded || finished) return;
+  flights.length = 0;
+  pieces.forEach((p) => {
+    if (p.state === 'placed') return;
+    p.state = 'placed';
+    p.mesh.visible = true;
+    p.mesh.position.copy(p.target);
+    p.mesh.quaternion.copy(IDENT);
+    p.mesh.scale.setScalar(1);
+    p.ghost.visible = false;
+    removeCard(p);
+  });
+  placedCount = pieces.length;
+  updateInfo();
+  updateCardStates();
+  finish();
 }
 
 function restart() {
+  if (!loaded) return;
   finished = false;
   placedCount = 0;
   flights.length = 0;
   setAnimating(false);
   toastEl.classList.remove('show');
-  hintEl.textContent = DEFAULT_HINT;
   controls.autoRotate = false;
   pieces.forEach((p) => {
     p.state = 'idle';
@@ -531,145 +772,372 @@ function restart() {
     p.mesh.scale.setScalar(1);
     p.ghost.visible = true;
     p.flash = 0;
-    if (p.spin) p.spin.v = 0;
     restoreCard(p);
-    p.tag.textContent = 'Tıkla';
     renderThumb(p);
   });
+  resetSpin();
+  fx.reset();
   updateInfo();
+  updateCardStates();
+  refreshHint();
   goHome();
+  ai.notify('restart');
 }
 $('restart').onclick = restart;
 $('again').onclick = restart;
 
 // ======================================================================
-//  MODEL YÜKLEME
+//  MODEL LİSTESİ, MODEL YÜKLEME / DEĞİŞTİRME
 // ======================================================================
-new GLTFLoader().load(
-  MODEL_URL,
-  (gltf) => {
-    const root = gltf.scene;
-    root.updateMatrixWorld(true);
+const gltfLoader = new GLTFLoader();
+let loadToken = 0;
+let extras = [];        // zemin gibi modele bağlı ek nesneler (model değişince temizlenir)
 
-    const meshes = [];
-    root.traverse((o) => { if (o.isMesh) meshes.push(o); });
-    meshes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-    console.log('Parçalar:', meshes.map((m) => m.name));
+function modelName(m) {
+  const n = m.name;
+  if (!n) return m.id;
+  if (typeof n === 'string') return n;
+  return n[lang] || n[FALLBACK_LANG] || n.tr || Object.values(n)[0] || m.id;
+}
 
-    // Her parçanın geometrisini dünya konumuna pişir, bütün kutuyu bul
-    const whole = new THREE.Box3();
-    const raw = meshes.map((m) => {
-      const g = m.geometry.clone();
-      g.applyMatrix4(m.matrixWorld);
-      g.computeBoundingBox();
-      const b = g.boundingBox.clone();
-      whole.union(b);
-      return { m, g, b };
-    });
-    const wholeSize = whole.getSize(new V3());
-    const wholeCenter = whole.getCenter(new V3());
-    const S = MODEL_SIZE / Math.max(wholeSize.x, wholeSize.y, wholeSize.z);
-    modelRadius = (wholeSize.length() * S) / 2;
-    const groundY = -(wholeSize.y * S) / 2;
+// models.json'daki animation alanını tek biçime getir ({type:'spin'|'group'|'clouds'|'snow'|'ball', ...} ya da null)
+function normalizeAnim(a) {
+  if (!a || typeof a !== 'object') return null;
+  const hasParts = Array.isArray(a.parts) && a.parts.length > 0;
+  const hasRange = Array.isArray(a.range) && a.range.length === 2;
+  const type = a.type || (hasParts ? 'spin' : null);
+  if (!type) return null;
+  if (type === 'spin' && !hasParts) return null;
+  if (type === 'group' && !hasParts && !hasRange) return null;
+  return { ...a, type };
+}
 
-    raw.forEach((o, i) => {
-      const c = o.b.getCenter(new V3());
-      const size = o.b.getSize(new V3()).multiplyScalar(S);
-      const target = c.clone().sub(wholeCenter).multiplyScalar(S);
+const fx = createEffects(THREE, scene);
+let fxBroken = false;
+const fxCtx = {
+  pieces, modelGroup,
+  get modelRadius() { return modelRadius; },
+  get groundY() { return groundY; },
+  get extras() { return extras; },
+  get isOrtho() { return isOrtho; },
+};
 
-      // Geometriyi kendi merkezine al ve ölçekle (hayalet, gerçek parça ve küçük resim aynı geometriyi kullanır)
-      const g = o.g;
-      g.translate(-c.x, -c.y, -c.z);
-      g.scale(S, S, S);
-      if (!g.attributes.normal) g.computeVertexNormals();
+function clearModel() {
+  fx.dispose();                 // efektler önce (zemin nesnelerini geri açar)
+  fxBroken = false;
+  spinRigs.length = 0;
+  flights.length = 0;
+  hoverPiece = null;
+  io.disconnect();
+  pieces.forEach((p) => {
+    clearTimeout(p.goneTimer); clearTimeout(p.blinkTimer);
+    p.geom.dispose(); p.edgeGeom.dispose();
+    p.mat.dispose(); p.thumbMat.dispose(); p.ghostMat.dispose(); p.edgeMat.dispose();
+  });
+  pieces.length = 0;
+  extras.forEach((e) => { e.geometry.dispose(); if (e.material.map) e.material.map.dispose(); e.material.dispose(); });
+  extras = [];
+  while (modelGroup.children.length) modelGroup.remove(modelGroup.children[0]);
+  listEl.innerHTML = '';
+}
 
-      const mat = new THREE.MeshStandardMaterial({ color: WOOD[i % WOOD.length], roughness: 0.55 });
-      const mesh = new THREE.Mesh(g, mat);
-      mesh.position.copy(target);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.visible = false;
-      modelGroup.add(mesh);
+function loadModel(entry) {
+  const token = ++loadToken;
+  clearModel();
+  currentModel = entry;
+  modelAnim = normalizeAnim(entry.animation);
+  loaded = false; finished = false; placedCount = 0; loadState = 'loading';
+  setAnimating(false);
+  toastEl.classList.remove('show');
+  animBtn.hidden = !modelAnim;
+  nextModelBtn.hidden = models.length < 2;
+  controls.autoRotate = false;
+  refreshModelUi();
+  refreshHint();
+  updateInfo();
 
-      const ghostMat = new THREE.MeshStandardMaterial({
-        color: GHOST_COLOR.clone(), transparent: true, opacity: 0.16, depthWrite: false, roughness: 0.3,
-      });
-      const edgeMat = new THREE.LineBasicMaterial({ color: 0x6f86c9, transparent: true, opacity: 0.4 });
-      const ghost = new THREE.Mesh(g, ghostMat);
-      ghost.position.copy(target);
-      ghost.renderOrder = 1;
-      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), edgeMat);
-      edges.renderOrder = 2;
-      ghost.add(edges);
-      modelGroup.add(ghost);
-
-      // Oyun sonunda dönecek parça mı?
-      const lname = o.m.name.toLowerCase();
-      const key = SPIN_PARTS.find((k) => lname.includes(k));
-      let spin = null;
-      if (key) {
-        const sz = [size.x, size.y, size.z];
-        const thin = sz.indexOf(Math.min(...sz));
-        const axisName = SPIN_AXIS[key];
-        spin = { axis: (axisName ? AXES['xyz'.indexOf(axisName)] : AXES[thin]).clone(), v: 0 };
-      }
-
-      const num = /parca_?(\d+)/i.exec(o.m.name);
-      pieces.push({
-        name: o.m.name,
-        label: num ? `Parça ${num[1]}` : (o.m.name || `Parça ${i + 1}`),
-        geom: g, mesh, mat, ghost, ghostMat, edgeMat,
-        thumbMat: mat.clone(),
-        target, radius: size.length() / 2,
-        thumbQuat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.55, 0.65 + i * 0.4, 0.1)),
-        state: 'idle', flash: 0, spin, visible: true, grab: false,
-      });
-    });
-
-    // Zemin: yumuşak gölge + model altına hafif leke
-    const shadowPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(60, 60).rotateX(-Math.PI / 2),
-      new THREE.ShadowMaterial({ opacity: 0.18 })
-    );
-    shadowPlane.position.y = groundY - 0.002;
-    shadowPlane.receiveShadow = true;
-    scene.add(shadowPlane);
-
-    const sc = document.createElement('canvas');
-    sc.width = sc.height = 256;
-    {
-      const g = sc.getContext('2d');
-      const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
-      gr.addColorStop(0, 'rgba(110,130,185,0.28)');
-      gr.addColorStop(1, 'rgba(110,130,185,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
+  gltfLoader.load(
+    MODELS_DIR + entry.file,
+    (gltf) => {
+      if (token !== loadToken) return;          // bu arada başka model seçildi
+      try { buildModel(gltf); } catch (err) { console.error(err); loadState = 'error'; updateInfo(); }
+    },
+    undefined,
+    (err) => {
+      if (token !== loadToken) return;
+      console.error(err);
+      loadState = 'error';
+      updateInfo();
     }
-    const spot = new THREE.Mesh(
-      new THREE.CircleGeometry(modelRadius * 1.5, 48).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, depthWrite: false })
-    );
-    spot.position.y = groundY - 0.004;
-    spot.renderOrder = -1;
-    scene.add(spot);
+  );
+}
 
-    // Kamera sınırları + başlangıç görünümü
-    controls.minDistance = modelRadius * 0.5;
-    controls.maxDistance = modelRadius * 10;
-    controls.target.copy(ZERO);
-    loaded = true;
-    goHome(0);
+function buildModel(gltf) {
+  const root = gltf.scene;
+  root.updateMatrixWorld(true);
 
-    listEl.innerHTML = '';
-    pieces.forEach((p) => { buildCard(p); renderThumb(p); });
-    loaded = true;
-    updateInfo();
-  },
-  undefined,
-  (err) => {
-    console.error(err);
-    countEl.textContent = 'Model yüklenemedi (F12 konsola bak)';
+  const meshes = [];
+  root.traverse((o) => { if (o.isMesh) meshes.push(o); });
+  meshes.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  console.log('Parçalar:', meshes.map((m) => m.name));
+
+  // Her parçanın geometrisini dünya konumuna pişir, bütün kutuyu bul
+  const whole = new THREE.Box3();
+  const rawParts = meshes.map((m) => {
+    const g = m.geometry.clone();
+    g.applyMatrix4(m.matrixWorld);
+    g.computeBoundingBox();
+    const b = g.boundingBox.clone();
+    whole.union(b);
+    return { m, g, b };
+  });
+  const wholeSize = whole.getSize(new V3());
+  const wholeCenter = whole.getCenter(new V3());
+  const S = MODEL_SIZE / Math.max(wholeSize.x, wholeSize.y, wholeSize.z);
+  modelRadius = (wholeSize.length() * S) / 2;
+  groundY = -(wholeSize.y * S) / 2;
+
+  rawParts.forEach((o, i) => {
+    const c = o.b.getCenter(new V3());
+    const size = o.b.getSize(new V3()).multiplyScalar(S);
+    const target = c.clone().sub(wholeCenter).multiplyScalar(S);
+
+    // Geometriyi kendi merkezine al ve ölçekle
+    const g = o.g;
+    g.translate(-c.x, -c.y, -c.z);
+    g.scale(S, S, S);
+    if (!g.attributes.normal) g.computeVertexNormals();
+
+    const mat = new THREE.MeshStandardMaterial({ color: WOOD[i % WOOD.length], roughness: 0.55 });
+    // models.json → "colors": { "parca_10": "#e11d1d" } ile parçaya özel renk
+    const colorKey = Object.keys(currentModel.colors || {}).find((k) => nameMatches(o.m.name, k));
+    if (colorKey) mat.color.set(currentModel.colors[colorKey]);
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.position.copy(target);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.visible = false;
+    modelGroup.add(mesh);
+
+    const ghostMat = new THREE.MeshStandardMaterial({
+      color: GHOST_COLOR.clone(), transparent: true, opacity: 0.16, depthWrite: false, roughness: 0.3,
+    });
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x6f86c9, transparent: true, opacity: 0.4 });
+    const ghost = new THREE.Mesh(g, ghostMat);
+    ghost.position.copy(target);
+    ghost.renderOrder = 1;
+    const edgeGeom = new THREE.EdgesGeometry(g, 30);
+    const edges = new THREE.LineSegments(edgeGeom, edgeMat);
+    edges.renderOrder = 2;
+    ghost.add(edges);
+    modelGroup.add(ghost);
+
+    const spin = null;   // dönüş ayarları buildModel sonunda setupSpin() ile atanır
+
+    const num = /parca_?(\d+)/i.exec(o.m.name);
+    pieces.push({
+      name: o.m.name,
+      index: i + 1,
+      num: num ? Number(num[1]) : null,
+      geom: g, mesh, mat, ghost, ghostMat, edgeMat, edgeGeom,
+      thumbMat: mat.clone(),
+      target, size, radius: size.length() / 2,
+      thumbQuat: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.55, 0.65 + i * 0.4, 0.1)),
+      state: 'idle', flash: 0, spin, visible: true, grab: false, hintUntil: 0,
+    });
+  });
+  maxPieceRadius = Math.max(...pieces.map((p) => p.radius));
+  setupSpin(S);
+
+  // Zemin: yumuşak gölge + model altına hafif leke
+  const shadowPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 60).rotateX(-Math.PI / 2),
+    new THREE.ShadowMaterial({ opacity: 0.18 })
+  );
+  shadowPlane.position.y = groundY - 0.002;
+  shadowPlane.receiveShadow = true;
+  modelGroup.add(shadowPlane);
+
+  const sc = document.createElement('canvas');
+  sc.width = sc.height = 256;
+  {
+    const g = sc.getContext('2d');
+    const gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+    gr.addColorStop(0, 'rgba(110,130,185,0.28)');
+    gr.addColorStop(1, 'rgba(110,130,185,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 256, 256);
   }
-);
+  const spot = new THREE.Mesh(
+    new THREE.CircleGeometry(modelRadius * 1.5, 48).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(sc), transparent: true, depthWrite: false })
+  );
+  spot.position.y = groundY - 0.004;
+  spot.renderOrder = -1;
+  modelGroup.add(spot);
+  extras.push(shadowPlane, spot);
+  fx.setup(modelAnim, fxCtx);
+
+  // Kamera sınırları + başlangıç görünümü
+  controls.minDistance = modelRadius * 0.5;
+  controls.maxDistance = modelRadius * 10;
+  controls.target.copy(ZERO);
+  userMoved = false;
+  loaded = true;
+  loadState = 'ready';
+  goHome(0);
+
+  listEl.innerHTML = '';
+  pieces.forEach((p) => { buildCard(p); renderThumb(p); });
+  updateInfo();
+  updateCardStates();
+  ai.notify('modelLoaded');
+}
+
+function selectModel(m) {
+  if (!m) return;
+  store.set('model', m.id);
+  closeMenus();
+  loadModel(m);
+  ai.notify('activity');
+}
+function nextModel() {
+  const i = models.indexOf(currentModel);
+  selectModel(models[(i + 1) % models.length]);
+}
+nextModelBtn.onclick = nextModel;
+
+// ======================================================================
+//  ÜST ÇUBUK: model ve dil menüleri
+// ======================================================================
+const MENUS = {
+  model: { btn: $('btnModel'), menu: $('menuModel') },
+  lang: { btn: $('btnLang'), menu: $('menuLang') },
+};
+function closeMenus() {
+  Object.values(MENUS).forEach(({ btn, menu }) => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); });
+}
+function openMenu(name, toggle = false) {
+  const { btn, menu } = MENUS[name];
+  const wasOpen = !menu.hidden;
+  closeMenus();
+  if (toggle && wasOpen) return;
+  menu.hidden = false;
+  btn.setAttribute('aria-expanded', 'true');
+}
+MENUS.model.btn.onclick = () => openMenu('model', true);
+MENUS.lang.btn.onclick = () => openMenu('lang', true);
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.dd')) closeMenus(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
+
+function menuItem(label, on, onClick, extra = '') {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'dd-item' + (on ? ' on' : '');
+  b.setAttribute('role', 'menuitem');
+  b.innerHTML = `<span class="chk"></span><span class="nm"></span>${extra}`;
+  b.querySelector('.nm').textContent = label;
+  b.onclick = onClick;
+  return b;
+}
+
+function refreshModelUi() {
+  $('modelLabel').textContent = currentModel ? modelName(currentModel) : '';
+  MENUS.model.menu.innerHTML = '';
+  models.forEach((m) => {
+    MENUS.model.menu.appendChild(
+      menuItem(modelName(m), m === currentModel, () => { closeMenus(); if (m !== currentModel) selectModel(m); },
+        normalizeAnim(m.animation) ? '<span class="badge">▶</span>' : '')
+    );
+  });
+}
+
+function buildLangMenu() {
+  MENUS.lang.menu.innerHTML = '';
+  Object.keys(LANGS).forEach((code) => {
+    MENUS.lang.menu.appendChild(menuItem(LANGS[code].name, code === lang, () => changeLang(code)));
+  });
+}
+
+function changeLang(code) {
+  closeMenus();
+  if (!LANGS[code] || code === lang) return;
+  lang = code;
+  store.set('lang', code);
+  applyLang();
+}
+
+function applyLang() {
+  const L = LANGS[lang];
+  document.documentElement.lang = lang;
+  document.documentElement.dir = L.dir || 'ltr';
+  document.title = `Ankara Robotik ${t('title')}`;
+  document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+    const s = t(el.dataset.i18nTitle);
+    el.title = s;
+    el.setAttribute('aria-label', s);
+  });
+  $('langLabel').textContent = L.short;
+  $('aiName').textContent = t('ai.name');
+  $('aiRole').textContent = t('ai.role');
+  $('aiFabLabel').textContent = t('ai.fab');
+  $('aiClose').setAttribute('aria-label', t('ai.close'));
+  refreshAnimBtn();
+  buildLangMenu();
+  refreshModelUi();
+  refreshHint();
+  updateInfo();
+  updateCardStates();
+  ai.refreshLang();
+}
+
+// ======================================================================
+//  BUILDER AI (builder-ai.js): kural tabanlı asistan, oyunla bu arayüzle konuşur
+// ======================================================================
+const ai = createBuilderAI({
+  els: {
+    fab: $('aiFab'), panel: $('aiPanel'), body: $('aiBody'), closeBtn: $('aiClose'),
+    form: $('aiForm'), input: $('aiInput'), quick: $('aiQuick'),
+  },
+  t, raw,
+  getState: () => {
+    const nx = nextPiece();
+    return {
+      loaded, finished,
+      total: pieces.length,
+      placed: placedCount,
+      left: pieces.length - placedCount,
+      next: nx ? pieceLabel(nx) : '',
+      mode,
+      model: currentModel ? modelName(currentModel) : '',
+      hasAnimation: !!modelAnim,
+      modelCount: models.length,
+    };
+  },
+  actions: {
+    setMode,
+    highlight: () => highlightPiece(),
+    restart,
+    nextModel,
+    openModels: () => openMenu('model'),
+    openLang: () => openMenu('lang'),
+  },
+});
+// Kullanıcı bir şeye dokundukça "takıldın mı?" sayacı sıfırlanır
+document.addEventListener('pointerdown', () => ai.notify('activity'), true);
+
+
+// ?pivot ile açılınca pivot ayarlama aracı yüklenir (normal kullanımda hiç yüklenmez)
+if (new URLSearchParams(location.search).has('pivot')) {
+  import('./pivot-tool.js')
+    .then((m) => m.startPivotTool({
+      THREE, scene,
+      getRigs: () => spinRigs, getAnim: () => modelAnim, getModel: () => currentModel,
+      getRadius: () => modelRadius, applyRig, placeAll: placeAllInstant,
+      setAnimating, isAnimating: () => animating,
+    }))
+    .catch((err) => console.error('[pivot aracı] yüklenemedi:', err));
+}
 
 // ======================================================================
 //  ANA DÖNGÜ
@@ -682,6 +1150,7 @@ const tmp = new V3();
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05);
   const time = clock.elapsedTime;
+  const nowMs = performance.now();
   const pulse = 0.5 + 0.5 * Math.sin(time * 4.5);
 
   if (anim) stepAnim(dt);
@@ -703,10 +1172,15 @@ renderer.setAnimationLoop(() => {
     if (t >= 1) { flights.splice(i, 1); land(f); }
   }
 
+  const spinSpeed = (modelAnim && (modelAnim.type === 'spin' || modelAnim.type === 'group') && modelAnim.speed) || DEFAULT_SPIN_SPEED;
+  const fxActive = finished && animating;
+  if (!fxBroken) {
+    try { fx.update(dt, fxActive); } catch (err) { fxBroken = true; console.error('[efekt] devre dışı:', err); }
+  }
   pieces.forEach((p) => {
-    // Hayalet parlaması: üstüne gelinen / yola çıkan parça
+    // Hayalet parlaması: üstüne gelinen / yola çıkan / ipucu verilen parça
     if (p.ghost.visible) {
-      const hot = p === hoverPiece || p.state === 'flying';
+      const hot = p === hoverPiece || p.state === 'flying' || p.hintUntil > nowMs;
       p.ghostMat.color.lerp(hot ? HOT_COLOR : GHOST_COLOR, 0.2);
       p.ghostMat.opacity = THREE.MathUtils.lerp(p.ghostMat.opacity, hot ? 0.45 + 0.2 * pulse : 0.16, 0.2);
       p.edgeMat.opacity = THREE.MathUtils.lerp(p.edgeMat.opacity, hot ? 0.95 : 0.4, 0.2);
@@ -720,13 +1194,9 @@ renderer.setAnimationLoop(() => {
     } else if (p.mat.emissiveIntensity) {
       p.mat.emissiveIntensity = 0;
     }
-    // Animasyon açıkken parca_10-13 kendi ekseninde döner
-    if (p.spin && p.state === 'placed') {
-      const goal = finished && animating ? SPIN_SPEED : 0;
-      p.spin.v = THREE.MathUtils.lerp(p.spin.v, goal, 1 - Math.exp(-dt * 1.5));
-      if (Math.abs(p.spin.v) > 0.001) p.mesh.rotateOnAxis(p.spin.axis, p.spin.v * dt);
-    }
   });
+
+  updateSpin(dt, spinSpeed);
 
   renderer.render(scene, camera);
   updateCube();
@@ -745,75 +1215,49 @@ renderer.setAnimationLoop(() => {
 });
 
 // ======================================================================
-//  BUILDER AI (sağ altta, yalnızca görsel – hazır senaryo, gerçek yapay zekâ yok)
+//  BAŞLAT: model listesini oku, dili uygula, ilk modeli yükle
 // ======================================================================
-const aiFab = $('aiFab'), aiPanel = $('aiPanel'), aiBody = $('aiBody');
-const AI_SCRIPT = {
-  intro: ['Merhaba! Ben Builder AI 👋', 'Bu projede ahşap parçalardan bir robot aracı birlikte kuruyoruz.'],
-  steps: [
-    { q: 'Daha önce 3D puzzle yaptın mı?',
-      opts: [['Evet, yaptım', 'Harika! O zaman hızlı ilerlersin 🚀'], ['İlk kez yapıyorum', 'Sorun değil, adım adım birlikte yaparız 😊']] },
-    { q: 'Parçaları nasıl yerleştirmek istersin?',
-      opts: [['Sırayla', 'Güzel, listenin en üstünden başla.'], ['Kendim seçeyim', 'Olur, istediğin parçaya tıkla.']] },
-  ],
-  outro: ['Soldaki bir parçaya tıkla, yerine uçup oturur ✨', 'Sağ üstteki küple modeli her açıdan inceleyebilirsin.'],
-};
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-let aiStarted = false;
+// models.json'u oku; küçük biçim hatalarını (BOM, // yorumlar, sondaki fazla virgül) tolere et
+function parseModelsJson(text) {
+  const clean = text.replace(/^\uFEFF/, '');
+  try { return JSON.parse(clean); } catch (first) {
+    try {
+      return JSON.parse(clean.replace(/^\s*\/\/.*$/gm, '').replace(/,\s*([}\]])/g, '$1'));
+    } catch { throw first; }
+  }
+}
 
-function aiScroll() { aiBody.scrollTop = aiBody.scrollHeight; }
-function aiMsg(text, who) {
-  const d = document.createElement('div');
-  d.className = `msg ${who}`;
-  d.textContent = text;
-  aiBody.appendChild(d);
-  aiScroll();
+function showNotice(msg) {
+  const el = $('notice');
+  el.textContent = msg;
+  el.hidden = !msg;
 }
-async function aiSay(lines) {
-  for (const line of lines) {
-    const t = document.createElement('div');
-    t.className = 'msg bot typing';
-    t.innerHTML = '<i></i><i></i><i></i>';
-    aiBody.appendChild(t);
-    aiScroll();
-    await wait(650);
-    t.remove();
-    aiMsg(line, 'bot');
-    await wait(180);
+
+(async function init() {
+  let defaultId = null;
+  let problem = '';
+  const tryPaths = [MODELS_INDEX, MODELS_INDEX_ALT];
+  let loaded = false;
+  for (const path of tryPaths) {
+    try {
+      const res = await fetch(`${path}?v=${Date.now()}`, { cache: 'no-store' });
+      if (!res.ok) continue;
+      const data = parseModelsJson(await res.text());
+      models = (Array.isArray(data) ? data : data.models || []).filter((m) => m && m.file);
+      defaultId = Array.isArray(data) ? null : data.default || null;
+      if (models.length) { loaded = true; break; }
+    } catch (e) { /* try next */ }
   }
-}
-function aiChoose(labels) {
-  return new Promise((res) => {
-    const row = document.createElement('div');
-    row.className = 'chips';
-    labels.forEach((l, i) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'chip';
-      b.textContent = l;
-      b.onclick = () => { row.remove(); aiMsg(l, 'me'); res(i); };
-      row.appendChild(b);
-    });
-    aiBody.appendChild(row);
-    aiScroll();
-  });
-}
-async function aiRun() {
-  await aiSay(AI_SCRIPT.intro);
-  for (const s of AI_SCRIPT.steps) {
-    await aiSay([s.q]);
-    const i = await aiChoose(s.opts.map((o) => o[0]));
-    await aiSay([s.opts[i][1]]);
+  if (!loaded) {
+    console.error('models.json okunamadı (models/ veya kök), yedek modeller kullanılıyor');
+    problem = 'models.json bulunamadı';
+    models = FALLBACK_MODELS;
   }
-  await aiSay(AI_SCRIPT.outro);
-  await aiChoose(['Başlayalım! 🚀']);
-  aiToggle(false);
-}
-function aiToggle(open) {
-  aiPanel.hidden = !open;
-  aiFab.classList.toggle('open', open);
-  aiFab.classList.remove('pulse');
-  if (open && !aiStarted) { aiStarted = true; aiRun(); }
-}
-aiFab.onclick = () => aiToggle(aiPanel.hidden);
-$('aiClose').onclick = () => aiToggle(false);
+  models.forEach((m) => { if (!m.id) m.id = m.file; });
+  const wanted = store.get('model') || defaultId;
+  currentModel = models.find((m) => m.id === wanted) || models[0];
+  setMode(mode);
+  applyLang();
+  loadModel(currentModel);
+  if (problem) showNotice(t('modelsError', { msg: problem }));
+})();

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="tr" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
@@ -7,7 +7,7 @@
   <title>Ahşap Puzzle</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=Noto+Sans+Arabic:wght@500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
   {
@@ -19,23 +19,51 @@
   </script>
 </head>
 <body>
+  <div id="notice" hidden></div>
   <div class="app">
-    <header class="top">
-      <h1>Ankara Robotik <em>Ahşap Puzzle</em></h1>
+    <header class="topbar">
+      <h1><span class="brand">Ankara Robotik</span> <em data-i18n="title"></em></h1>
+
       <div class="progress">
-        <span id="count">Yükleniyor...</span>
+        <span id="count"></span>
         <div class="bar"><i id="bar"></i></div>
-        <button id="restart" class="ghost-btn" type="button" title="Baştan başla">↺ Baştan</button>
+        <button id="restart" class="ghost-btn" type="button" data-i18n="restart" data-i18n-title="restartTitle"></button>
+
+        <!-- Model seç -->
+        <div class="dd">
+          <button id="btnModel" class="ghost-btn dd-btn" type="button" data-i18n-title="modelBtn" aria-haspopup="true" aria-expanded="false">
+            <svg viewBox="0 0 24 24"><path d="M12 3 20 7.5v9L12 21l-8-4.5v-9z"/><path d="M12 12 20 7.5M12 12v9M12 12 4 7.5"/></svg>
+            <span id="modelLabel" class="dd-label"></span>
+            <svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="menuModel" class="dd-menu" role="menu" hidden></div>
+        </div>
+
+        <!-- Dil seç -->
+        <div class="dd">
+          <button id="btnLang" class="ghost-btn dd-btn" type="button" data-i18n-title="langTitle" aria-haspopup="true" aria-expanded="false">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 4 5.7 4 9s-1.4 6.4-4 9c-2.6-2.6-4-5.7-4-9s1.4-6.4 4-9z"/></svg>
+            <span id="langLabel" class="dd-label"></span>
+          </button>
+          <div id="menuLang" class="dd-menu" role="menu" hidden></div>
+        </div>
       </div>
     </header>
 
     <div class="layout">
-      <!-- Sol: parça listesi (yukarıdan aşağı) -->
+      <!-- Sol: parça listesi (yukarıdan aşağı, sırayla) -->
       <aside class="panel">
         <div class="panel-head">
-          <h2>Parçalar</h2>
+          <h2 data-i18n="parts"></h2>
           <span id="left"></span>
         </div>
+
+        <!-- Sıralı / Serbest yerleştirme -->
+        <div class="seg" id="modeSeg" role="group" data-i18n-title="mode.title">
+          <button id="modeOrdered" type="button" data-i18n="mode.ordered"></button>
+          <button id="modeFree" type="button" data-i18n="mode.free"></button>
+        </div>
+
         <div id="pieceList"></div>
       </aside>
 
@@ -44,56 +72,64 @@
         <div id="stage"></div>
 
         <div class="tools">
-          <div class="cube-wrap" id="cubeWrap" title="Sürükleyerek modeli çevir, yüzüne tıklayarak o görünüme geç">
+          <div class="cube-wrap" id="cubeWrap" data-i18n-title="tools.cube">
             <div id="cube">
-              <div class="f front"  data-view="front">ÖN</div>
-              <div class="f back"   data-view="back">ARKA</div>
-              <div class="f right"  data-view="right">SAĞ</div>
-              <div class="f left"   data-view="left">SOL</div>
-              <div class="f top"    data-view="top">ÜST</div>
-              <div class="f bottom" data-view="bottom">ALT</div>
+              <div class="f f-front"  data-view="front"  data-i18n="cube.front"></div>
+              <div class="f f-back"   data-view="back"   data-i18n="cube.back"></div>
+              <div class="f f-right"  data-view="right"  data-i18n="cube.right"></div>
+              <div class="f f-left"   data-view="left"   data-i18n="cube.left"></div>
+              <div class="f f-top"    data-view="top"    data-i18n="cube.top"></div>
+              <div class="f f-bottom" data-view="bottom" data-i18n="cube.bottom"></div>
             </div>
           </div>
 
-          <button class="tool" id="btnHome" type="button" title="Başlangıç görünümü">
+          <button class="tool" id="btnHome" type="button" data-i18n-title="tools.home">
             <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h5v-5.5h3v5.5h5V10"/></svg>
           </button>
-          <button class="tool" id="btnFit" type="button" title="Modele sığdır">
+          <button class="tool" id="btnFit" type="button" data-i18n-title="tools.fit">
             <svg viewBox="0 0 24 24"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M15 4h3.5A1.5 1.5 0 0 1 20 5.5V9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15M9 20H5.5A1.5 1.5 0 0 1 4 18.5V15"/><path d="M12 8.2 15.8 12 12 15.8 8.2 12z"/></svg>
           </button>
-          <button class="tool" id="btnIn" type="button" title="Yakınlaştır">
+          <button class="tool" id="btnIn" type="button" data-i18n-title="tools.zoomIn">
             <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
           </button>
-          <button class="tool" id="btnOut" type="button" title="Uzaklaştır">
+          <button class="tool" id="btnOut" type="button" data-i18n-title="tools.zoomOut">
             <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
           </button>
-          <button class="tool" id="btnProj" type="button" title="Perspektif / Ortografik görünüm">
+          <button class="tool" id="btnProj" type="button" data-i18n-title="tools.proj">
             <svg viewBox="0 0 24 24"><path d="M12 3.2 19.8 7.6v8.8L12 20.8l-7.8-4.4V7.6z"/><path d="M12 12 19.8 7.6M12 12v8.8M12 12 4.2 7.6"/></svg>
           </button>
         </div>
 
-        <div id="hint">Parçayı sürükleyerek çevir • Tıklayınca yerine oturur</div>
+        <div id="hint"></div>
 
-        <!-- Builder AI: yalnızca görsel asistan -->
+        <!-- Builder AI: kural tabanlı asistan (builder-ai.js) -->
         <div id="builder">
           <div class="ai-panel" id="aiPanel" hidden>
             <div class="ai-head">
               <span class="av"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>
-              <div class="ai-title"><b>Builder AI</b><small>Proje asistanı</small></div>
-              <button id="aiClose" class="ai-x" type="button" aria-label="Kapat">×</button>
+              <div class="ai-title"><b id="aiName">Builder AI</b><small id="aiRole"></small></div>
+              <button id="aiClose" class="ai-x" type="button">×</button>
             </div>
             <div class="ai-body" id="aiBody"></div>
+            <div class="ai-quick" id="aiQuick"></div>
+            <form class="ai-form" id="aiForm" autocomplete="off">
+              <input id="aiInput" type="text" maxlength="120" enterkeyhint="send">
+              <button class="ai-send" type="submit">
+                <svg viewBox="0 0 24 24"><path d="M4 12 20 4l-5 16-3.5-6.5z"/><path d="m11.5 13.5 3-3"/></svg>
+              </button>
+            </form>
           </div>
           <button class="ai-fab pulse" id="aiFab" type="button">
             <span class="av"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>
-            <span>Builder AI</span>
+            <span id="aiFabLabel">Builder AI</span>
           </button>
         </div>
 
         <div id="toast">
-          <span>Harika! Modeli tamamladın! 🎉</span>
-          <button id="animBtn" type="button">▶ Animasyonu başlat</button>
-          <button id="again" class="alt" type="button">Tekrar oyna</button>
+          <span id="toastMsg" data-i18n="toast"></span>
+          <button id="animBtn" type="button" hidden></button>
+          <button id="nextModel" class="alt" type="button" data-i18n="nextModel" hidden></button>
+          <button id="again" class="alt" type="button" data-i18n="again"></button>
         </div>
       </section>
     </div>
@@ -101,8 +137,8 @@
 
   <div id="rotate" role="alert">
     <div class="phone"></div>
-    <p>Lütfen telefonunu yatay çevir</p>
-    <small>Oyun yatay modda oynanır</small>
+    <p data-i18n="rotate.title"></p>
+    <small data-i18n="rotate.sub"></small>
   </div>
 
   <script type="module" src="game.js"></script>
